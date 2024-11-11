@@ -1,11 +1,25 @@
 import { ssz } from '@lodestar/types';
 import { concatGindices, createProof, ProofType } from '@chainsafe/persistent-merkle-tree';
+import fs from 'fs';
 
 import { createClient } from './client.js';
 import { toHex, verifyProof } from './utils.js';
 
 const BeaconState = ssz.deneb.BeaconState;
 const BeaconBlock = ssz.deneb.BeaconBlock;
+
+function formatValidatorJson(validator) {
+    return {
+        "$0__pubkey": validator.pubkey,
+        "$1__withdrawal_credentials": validator.withdrawal_credentials,
+        "$2__effective_balance": Number(validator.effective_balance),
+        "$3__slashed": validator.slashed,
+        "$4__activation_eligibility_epoch": Number(validator.activation_eligibility_epoch),
+        "$5__activation_epoch": Number(validator.activation_epoch),
+        "$6__exit_epoch": Number(validator.exit_epoch),
+        "$7__withdrawable_epoch": Number(validator.withdrawable_epoch)
+    };
+}
 
 /**
  * @param {string|number} slot
@@ -60,14 +74,24 @@ async function main(slot = 'finalized', validatorIndex = 0) {
         throw new Error('No block to fetch timestamp from');
     }
 
-    return {
-        blockRoot: toHex(blockRoot),
-        proof: p.witnesses.map(toHex),
-        validator: stateView.validators.type.elementType.toJson(stateView.validators.get(validatorIndex)),
-        validatorIndex: validatorIndex,
+    const result = {
+        "$0__proof": p.witnesses.map(toHex),
+        "$1__validator": formatValidatorJson(stateView.validators.type.elementType.toJson(
+            stateView.validators.get(validatorIndex)
+        )),
+        "$2__validatorIndex": validatorIndex,
+        "$3__blockRoot": toHex(blockRoot),
         ts: client.slotToTS(nextBlock.message.slot),
         gI,
     };
+
+    // Write the filtered results to a JSON file in test/fixtures directory
+    const outputData = Object.fromEntries(
+        Object.entries(result).filter(([key]) => key.startsWith('$'))
+    );
+    await fs.promises.writeFile('test/fixtures/validator_proof.json', JSON.stringify(outputData, null, 2));
+
+    return result;
 }
 
-main(7424512, 88888).then(console.log).catch(console.error);
+main(10371134, 88888).then(console.log).catch(console.error);

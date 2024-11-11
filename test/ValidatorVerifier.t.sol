@@ -20,6 +20,9 @@ contract ValidatorVerifierTest is Test {
 
     uint256 constant DENEB_ZERO_VALIDATOR_GINDEX = 798245441765376;
 
+    address public constant BEACON_ROOTS =
+        0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02;
+
     ValidatorVerifier public verifier;
     ProofJson public proofJson;
 
@@ -52,17 +55,10 @@ contract ValidatorVerifierTest is Test {
     }
 
     function test_ProveValidator_OnFork() public {
-        string memory forkUrl = vm.envOr("FORK_URL", string(""));
-        vm.skip(_isEmptyString(forkUrl));
-        vm.createSelectFork(forkUrl);
-        _checkChainId(5); // Only works on Goerli for now.
+        uint64 ts = uint64(block.timestamp);
 
-        // Timestamp of the block which parent root is a `proofJson.blockRoot`.
-        uint64 ts = 1705602156;
-
-        // Move to a block at ts 1705605588 (doesn't matter, but a root at `ts`
-        // should be still available to work.
-        vm.rollFork(10395866);
+        bytes32 parentRoot = getParentBlockRoot(ts);
+        assertEq(parentRoot, proofJson.blockRoot);
 
         verifier = new ValidatorVerifier(DENEB_ZERO_VALIDATOR_GINDEX);
 
@@ -73,14 +69,18 @@ contract ValidatorVerifierTest is Test {
             ts
         );
     }
+    function getParentBlockRoot(uint64 ts)
+        internal
+        view
+        returns (bytes32 root)
+    {
+        (bool success, bytes memory data) =
+            BEACON_ROOTS.staticcall(abi.encode(ts));
 
-    function _checkChainId(uint256 chainId) internal view {
-        if (chainId != block.chainid) {
-            revert("wrong chain id");
+        if (!success || data.length == 0) {
+            revert("No root found");
         }
-    }
 
-    function _isEmptyString(string memory str) internal pure returns (bool) {
-        return bytes(str).length == 0;
+        root = abi.decode(data, (bytes32));
     }
 }
